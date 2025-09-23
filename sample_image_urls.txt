@@ -1,0 +1,21 @@
+// Sample product data with external image URLs (no Firebase Storage needed)
+
+// For your Firestore products collection, use these image URLs:
+
+// iPhone 15 Pro
+"images": ["https://store.storeimages.cdn-apple.com/4982/as-images.apple.com/is/iphone-15-pro-finish-select-202309-6-1inch-naturaltitanium.jpg?wid=5120&hei=2880&fmt=p-jpg&qlt=80&.v=1692895702775"]
+
+// Samsung Galaxy S24
+"images": ["https://images.samsung.com/is/image/samsung/p6pim/in/2401/gallery/in-galaxy-s24-ultra-s928-sm-s928bzkcins-thumb-539573024?$650_519_PNG$"]
+
+// Nike Shoes
+"images": ["https://static.nike.com/a/images/t_PDP_1280_v1/f_auto,q_auto:eco/awjogtdnqxniqqk0wpgf/air-max-270-shoes-4Pwxlz.png"]
+
+// Generic placeholders
+"images": ["https://via.placeholder.com/300x300/007BFF/FFFFFF?text=Electronics"]
+"images": ["https://via.placeholder.com/300x300/28A745/FFFFFF?text=Fashion"]
+"images": ["https://via.placeholder.com/300x300/DC3545/FFFFFF?text=Home+Garden"]
+
+// Real product images from public URLs
+"images": ["https://m.media-amazon.com/images/I/71jG+e7roXL._SL1500_.jpg"] // Amazon product images
+"images": ["https://rukminim2.flixcart.com/image/416/416/product-image.jpg"] // Flipkart images

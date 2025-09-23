@@ -1,0 +1,31 @@
+// How to get your Firebase configuration values:
+
+// 1. Go to Firebase Console > Project Settings
+// 2. Scroll to "Your apps" section  
+// 3. Click on your Flutter app
+// 4. Copy these values to replace in firebase_options.dart:
+
+/*
+From Firebase Console "General" tab:
+- Project ID: smartmart-xxxxx
+- Web API Key: AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+- App ID: 1:123456789:web:abcdefghijklmnop
+
+From "Cloud Messaging" tab:
+- Sender ID: 123456789
+
+Your storage bucket will be: smartmart-xxxxx.appspot.com
+Your auth domain will be: smartmart-xxxxx.firebaseapp.com
+
+Replace the placeholder values in firebase_options.dart with these real values.
+*/
+
+// Example of what your firebase_options.dart should look like after update:
+
+static const FirebaseOptions android = FirebaseOptions(
+  apiKey: 'AIzaSyBXXXXXXXXXXXXXXXXXXXXXXXXXXXX', // From Firebase Console
+  appId: '1:123456789:android:abcdefghijk123456', // From Firebase Console  
+  messagingSenderId: '123456789', // From Firebase Console
+  projectId: 'smartmart-12345', // Your actual project ID
+  storageBucket: 'smartmart-12345.appspot.com', // Your project ID + .appspot.com
+);

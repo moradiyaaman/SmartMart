@@ -1,0 +1,2 @@
+// This file is just a placeholder for the assets/images/products directory
+// Add your product images here as PNG or JPG files
