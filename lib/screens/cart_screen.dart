@@ -1,23 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import '../services/cart_service.dart';
 import 'checkout_screen.dart';
+import 'customer_home_screen.dart';
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  bool _isContinueShoppingLoading = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shopping Cart'),
-        backgroundColor: Colors.blue.shade600,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
       body: Consumer<CartService>(
         builder: (context, cartService, child) {
+          if (cartService.isLoading) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading your cart...'),
+                ],
+              ),
+            );
+          }
+
           if (cartService.isEmpty) {
             return _buildEmptyCart(context);
           }
@@ -68,13 +84,51 @@ class CartScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: _isContinueShoppingLoading
+                ? null
+                : () async {
+                    final navigator = Navigator.of(context, rootNavigator: true);
+                    final scaffoldMessenger = ScaffoldMessenger.of(context);
+                    setState(() => _isContinueShoppingLoading = true);
+                    await Future.delayed(const Duration(milliseconds: 200));
+                    if (!mounted) return;
+                    try {
+                      navigator.pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (context) => const CustomerHomeScreen(initialTab: 1), // Tab 1 is Catalog
+                        ),
+                        (route) => false,
+                      );
+                    } catch (error) {
+                      if (!mounted) return;
+                      setState(() => _isContinueShoppingLoading = false);
+                      scaffoldMessenger.showSnackBar(
+                        SnackBar(content: Text('Unable to continue shopping: $error')),
+                      );
+                    }
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue.shade600,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             ),
-            child: const Text('Continue Shopping'),
+            child: _isContinueShoppingLoading
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Text('Loading...'),
+                    ],
+                  )
+                : const Text('Continue Shopping'),
           ),
         ],
       ),
@@ -98,19 +152,8 @@ class CartScreen extends StatelessWidget {
               child: SizedBox(
                 width: 80,
                 height: 80,
-                child: product.imageUrls.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: product.imageUrls.first,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Center(child: CircularProgressIndicator()),
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(Icons.image_not_supported),
-                        ),
-                      )
+                child: product.hasImages
+                    ? _buildProductImage(product.imageUrl)
                     : Container(
                         color: Colors.grey.shade200,
                         child: const Icon(Icons.image_not_supported),
@@ -161,7 +204,7 @@ class CartScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      onPressed: () => cartService.decrementQuantity(product.id),
+                      onPressed: () async => await cartService.decrementQuantity(product.id),
                       icon: const Icon(Icons.remove_circle_outline),
                       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       padding: EdgeInsets.zero,
@@ -183,7 +226,7 @@ class CartScreen extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      onPressed: () => cartService.incrementQuantity(product.id),
+                      onPressed: () async => await cartService.incrementQuantity(product.id),
                       icon: const Icon(Icons.add_circle_outline),
                       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       padding: EdgeInsets.zero,
@@ -192,7 +235,7 @@ class CartScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 TextButton(
-                  onPressed: () => cartService.removeFromCart(product.id),
+                  onPressed: () async => await cartService.removeFromCart(product.id),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.red,
                     padding: EdgeInsets.zero,
@@ -301,5 +344,45 @@ class CartScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildProductImage(String imagePath) {
+    if (imagePath.startsWith('assets/')) {
+      // Local asset image
+      return Image.asset(
+        imagePath,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.image_not_supported, size: 40),
+        ),
+      );
+    } else if (imagePath.startsWith('http')) {
+      // Network image
+      return CachedNetworkImage(
+        imageUrl: imagePath,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Container(
+          color: Colors.grey.shade200,
+          child: const Center(
+            child: CircularProgressIndicator(),
+          ),
+        ),
+        errorWidget: (context, url, error) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.image_not_supported, size: 40),
+        ),
+      );
+    } else {
+      // Local file path
+      return Image.file(
+        File(imagePath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.image_not_supported, size: 40),
+        ),
+      );
+    }
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
 import '../models/app_models.dart' as models;
 import '../services/order_service.dart';
 import 'order_details_screen.dart';
@@ -190,13 +191,7 @@ class OrderCard extends StatelessWidget {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: order.items.first.productImage.isNotEmpty
-                            ? Image.network(
-                                order.items.first.productImage,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Icon(Icons.image, color: Colors.grey);
-                                },
-                              )
+                            ? _buildAnyImage(order.items.first.productImage)
                             : const Icon(Icons.image, color: Colors.grey),
                       ),
                     ),
@@ -274,6 +269,25 @@ class OrderCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildAnyImage(String path) {
+    if (path.startsWith('assets/')) {
+      return Image.asset(
+        path,
+        fit: BoxFit.cover,
+      );
+    } else if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+      );
+    } else {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+      );
+    }
   }
 
   Color _getStatusColor(models.OrderStatus status) {

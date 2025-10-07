@@ -126,6 +126,14 @@ class DebugScreen extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           FloatingActionButton(
+            heroTag: "seedAll",
+            onPressed: () => _seedFivePerCategory(context),
+            child: const Icon(Icons.auto_mode),
+            tooltip: 'Seed 5 products per category',
+            backgroundColor: Colors.purple,
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
             heroTag: "mixed",
             onPressed: () => _createMultipleTestProducts(context),
             child: const Icon(Icons.add_box),
@@ -157,6 +165,71 @@ class DebugScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _seedFivePerCategory(BuildContext context) async {
+    // Categories aligned with the catalog/home screens
+    const categories = [
+      'Electronics',
+      'Fashion',
+      'Home & Garden',
+      'Sports',
+      'Books',
+      'Health & Beauty',
+      'Automotive',
+      'Toys & Games',
+    ];
+
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      final now = FieldValue.serverTimestamp();
+
+      int counter = 0;
+      for (final cat in categories) {
+        for (int i = 1; i <= 5; i++) {
+          final docRef = FirebaseFirestore.instance.collection('products').doc();
+          final price = 199.0 + (i * 50) + (cat.hashCode % 100);
+          final stock = 5 + (i * 3);
+          // Use picsum for reliable web images; names include category and index
+          final product = {
+            'name': '$cat Item $i',
+            'description': 'Sample $cat product number $i for demo and testing.',
+            'price': double.parse(price.toStringAsFixed(2)),
+            'category': cat,
+            'images': [
+              'https://picsum.photos/seed/${cat.replaceAll(' ', '_').toLowerCase()}_$i/400/400'
+            ],
+            'stock': stock,
+            'rating': 4.0 + (i % 5) * 0.1,
+            'reviewCount': 10 * i,
+            'isActive': true,
+            'createdAt': now,
+            'updatedAt': now,
+          };
+          batch.set(docRef, product);
+          counter++;
+        }
+      }
+
+      await batch.commit();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Seeded $counter products (5 per category).'),
+            backgroundColor: Colors.purple,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to seed products: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _createTestProduct(BuildContext context) async {

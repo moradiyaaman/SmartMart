@@ -69,6 +69,12 @@ class Product {
   // Add getter for backward compatibility
   List<String> get imageUrls => images;
 
+  // Get primary image URL (first image or empty string)
+  String get imageUrl => images.isNotEmpty ? images.first : '';
+
+  // Check if product has images
+  bool get hasImages => images.isNotEmpty;
+
   factory Product.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return Product.fromMap(data, doc.id);

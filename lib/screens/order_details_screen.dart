@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:io';
 import '../models/app_models.dart' as models;
 import '../services/order_service.dart';
 
@@ -240,13 +241,7 @@ class OrderDetailsScreen extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: item.productImage.isNotEmpty
-                  ? Image.network(
-                      item.productImage,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.image, color: Colors.grey);
-                      },
-                    )
+                  ? _buildAnyImage(item.productImage)
                   : const Icon(Icons.image, color: Colors.grey),
             ),
           ),
@@ -283,6 +278,25 @@ class OrderDetailsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildAnyImage(String path) {
+    if (path.startsWith('assets/')) {
+      return Image.asset(
+        path,
+        fit: BoxFit.cover,
+      );
+    } else if (path.startsWith('http')) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+      );
+    } else {
+      return Image.file(
+        File(path),
+        fit: BoxFit.cover,
+      );
+    }
   }
 
   Widget _buildSummaryRow(String label, String value, {bool isTotal = false}) {

@@ -1,15 +1,43 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
 import '../models/app_models.dart' as models;
+import 'local_image_service.dart';
 
 class AdminService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Debug helper to check Firebase configuration and local storage
+  Future<Map<String, dynamic>> debugFirebaseConfig() async {
+    final app = Firebase.app();
+    final options = app.options;
+    
+    // Check local storage
+    final localImagesDir = await LocalImageService.getImagesDirectoryPath();
+    final localImages = await LocalImageService.listLocalImages();
+    
+    return {
+      'projectId': options.projectId,
+      'storageBucket': options.storageBucket,
+      'authDomain': options.authDomain,
+      'hasPlaceholderValues': options.projectId.contains('your-project-id') || 
+                             options.projectId.contains('your-') ||
+                             options.storageBucket?.contains('your-project-id') == true,
+      'storageConfigured': await isStorageConfigured(),
+      'currentUser': _auth.currentUser?.email,
+      'isAuthenticated': _auth.currentUser != null,
+      'localStorageDir': localImagesDir,
+      'localImagesCount': localImages.length,
+      'localImages': localImages,
+      'imageStorageMethod': await isStorageConfigured() ? 'Firebase Storage' : 'Local Device Storage',
+    };
+  }
 
   // Check if user is admin
   Future<bool> isUserAdmin(String uid) async {
@@ -100,30 +128,40 @@ class AdminService {
       if (images.isNotEmpty) {
         // Check if Firebase Storage is configured
         final isStorageReady = await isStorageConfigured();
+        
         if (!isStorageReady) {
-          // Provide option to proceed without images
-          throw 'STORAGE_NOT_CONFIGURED: Firebase Storage is not set up. You can either:\n\n'
-              '1. Set up Firebase Storage:\n'
-              '   • Go to Firebase Console → Storage\n'
-              '   • Click "Get started"\n'
-              '   • Choose "Start in test mode"\n'
-              '   • Select your storage location\n\n'
-              '2. Or add the product without images for now\n\n'
-              'Contact your developer to configure Firebase Storage properly.';
-        }
-
-        // Upload images if storage is available
-        for (int i = 0; i < images.length; i++) {
-          try {
-            final imageUrl = await _uploadProductImage(images[i], '${product.name}_$i');
-            imageUrls.add(imageUrl);
-          } catch (e) {
-            throw 'Failed to upload image ${i + 1}: $e';
+          // Use local image storage as fallback
+          print('� Firebase Storage not configured, using local image storage as fallback');
+          
+          for (int i = 0; i < images.length; i++) {
+            try {
+              final file = File(images[i].path);
+              final localPath = await LocalImageService.saveImage(
+                file, 
+                nameHint: '${product.name}_$i'
+              );
+              imageUrls.add(localPath);
+              print('✅ Image saved locally: $localPath');
+            } catch (e) {
+              print('❌ Failed to save image ${i + 1} locally: $e');
+              throw 'Failed to save image ${i + 1} to local storage: $e';
+            }
+          }
+        } else {
+          // Use Firebase Storage
+          print('🔄 Using Firebase Storage for image uploads');
+          for (int i = 0; i < images.length; i++) {
+            try {
+              final imageUrl = await _uploadProductImage(images[i], '${product.name}_$i');
+              imageUrls.add(imageUrl);
+            } catch (e) {
+              throw 'Failed to upload image ${i + 1}: $e';
+            }
           }
         }
       }
 
-      // Create product with image URLs (empty if no images or storage not configured)
+      // Create product with image URLs (local paths or Firebase URLs)
       final productWithImages = product.copyWith(
         images: imageUrls,
         createdAt: DateTime.now(),
@@ -158,18 +196,48 @@ class AdminService {
     try {
       List<String> imageUrls = product.images;
 
-      // If new images are provided, upload them
+      // If new images are provided, handle them
       if (newImages != null && newImages.isNotEmpty) {
-        // Delete old images
+        // Delete old images (both local and Firebase)
         for (String oldUrl in product.images) {
-          await _deleteImageFromUrl(oldUrl);
+          if (oldUrl.startsWith('http')) {
+            // Firebase Storage URL
+            await _deleteImageFromUrl(oldUrl);
+          } else {
+            // Local file path
+            await LocalImageService.deleteImage(oldUrl);
+          }
         }
 
-        // Upload new images
+        // Check if Firebase Storage is configured
+        final isStorageReady = await isStorageConfigured();
+        
         imageUrls = [];
-        for (int i = 0; i < newImages.length; i++) {
-          final imageUrl = await _uploadProductImage(newImages[i], '${product.name}_$i');
-          imageUrls.add(imageUrl);
+        if (!isStorageReady) {
+          // Use local image storage as fallback
+          print('🔄 Firebase Storage not configured, using local image storage for updates');
+          
+          for (int i = 0; i < newImages.length; i++) {
+            try {
+              final file = File(newImages[i].path);
+              final localPath = await LocalImageService.saveImage(
+                file, 
+                nameHint: '${product.name}_updated_$i'
+              );
+              imageUrls.add(localPath);
+              print('✅ Updated image saved locally: $localPath');
+            } catch (e) {
+              print('❌ Failed to save updated image ${i + 1} locally: $e');
+              throw 'Failed to save updated image ${i + 1} to local storage: $e';
+            }
+          }
+        } else {
+          // Use Firebase Storage
+          print('🔄 Using Firebase Storage for image updates');
+          for (int i = 0; i < newImages.length; i++) {
+            final imageUrl = await _uploadProductImage(newImages[i], '${product.name}_updated_$i');
+            imageUrls.add(imageUrl);
+          }
         }
       }
 
@@ -234,9 +302,30 @@ class AdminService {
       // Try to get the root reference to check if storage is accessible
       final ref = _storage.ref();
       await ref.listAll(); // This will fail if storage isn't configured
+      print('✅ Firebase Storage is properly configured and accessible');
       return true;
+    } on FirebaseException catch (e) {
+      print('❌ Firebase Storage configuration error: ${e.code} - ${e.message}');
+      
+      // Provide specific error guidance
+      switch (e.code) {
+        case 'storage/project-not-found':
+        case 'storage/invalid-project-id':
+          print('💡 Fix: Update projectId in firebase_options.dart with your actual Firebase project ID');
+          break;
+        case 'storage/bucket-not-found':
+          print('💡 Fix: Enable Firebase Storage in Firebase Console and update storageBucket in firebase_options.dart');
+          break;
+        case 'storage/unauthorized':
+          print('💡 Fix: Check Firebase Storage rules and ensure admin authentication is working');
+          break;
+        default:
+          print('💡 Fix: Check FIREBASE_SETUP_COMPLETE.md for complete setup instructions');
+      }
+      return false;
     } catch (e) {
-      print('Storage configuration check failed: $e');
+      print('❌ Storage configuration check failed: $e');
+      print('💡 This usually means Firebase configuration values are placeholders. Check FIREBASE_SETUP_COMPLETE.md');
       return false;
     }
   }

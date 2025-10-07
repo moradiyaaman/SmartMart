@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import '../models/app_models.dart';
 import '../services/cart_service.dart';
+import '../utils/notification_service.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Product product;
@@ -28,7 +30,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           child: const Icon(Icons.image_not_supported, size: 50),
         ),
       );
-    } else {
+    } else if (imagePath.startsWith('http')) {
       // Network image
       return CachedNetworkImage(
         imageUrl: imagePath,
@@ -42,262 +44,253 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           child: const Icon(Icons.image_not_supported, size: 50),
         ),
       );
+    } else {
+      // Local file path
+      return Image.file(
+        File(imagePath),
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.image_not_supported, size: 50),
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.product.name),
-        backgroundColor: Colors.blue.shade600,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+      backgroundColor: Colors.white,
       body: Column(
         children: [
+          // Dominant, Full-Width, Scrollable Image Carousel
+          _buildDominantImageCarousel(),
+          
+          // Seamless, Integrated Product Details - No card, no separation
           Expanded(
             child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Product Images
-                  _buildImageSection(),
-                  
-                  // Product Info
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.product.name,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Product Name - Large, bold, multi-line wrapping
+                    Text(
+                      widget.product.name,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                        height: 1.25,
+                      ),
+                      maxLines: null,
+                      overflow: TextOverflow.visible,
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    // Product Description Text - Immediately after product name, no heading
+                    Text(
+                      widget.product.description,
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.5,
+                        color: Colors.grey.shade600,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // Price - Single, clean price
+                    Text(
+                      '₹${widget.product.price.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Stock Status
+                    Text(
+                      widget.product.stock > 0 
+                          ? 'Stock: ${widget.product.stock} available'
+                          : 'Out of stock',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: widget.product.stock > 0 
+                            ? Colors.green.shade600 
+                            : Colors.red.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Quantity Selector
+                    if (widget.product.stock > 0) ...[
+                      const Text(
+                        'Quantity',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
                         ),
-                        const SizedBox(height: 8),
-                        Row(
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              widget.product.category,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            const Spacer(),
-                            Icon(Icons.star, color: Colors.amber, size: 20),
-                            Text(
-                              ' ${widget.product.rating.toStringAsFixed(1)} (${widget.product.reviewCount})',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '₹${widget.product.price.toStringAsFixed(2)}',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: Colors.blue.shade600,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Text(
-                              'Stock: ',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Text(
-                              widget.product.stock > 0 
-                                  ? '${widget.product.stock} available'
-                                  : 'Out of stock',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: widget.product.stock > 0 
-                                    ? Colors.green.shade600 
-                                    : Colors.red,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Quantity Selector
-                        if (widget.product.stock > 0) ...[
-                          Text(
-                            'Quantity',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              IconButton(
-                                onPressed: _quantity > 1 
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _quantity > 1 
                                     ? () => setState(() => _quantity--) 
                                     : null,
-                                icon: const Icon(Icons.remove_circle_outline),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.grey.shade200,
-                                  foregroundColor: Colors.grey.shade700,
-                                ),
-                              ),
-                              Container(
-                                width: 60,
-                                height: 40,
-                                margin: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    _quantity.toString(),
-                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  child: Icon(
+                                    Icons.remove,
+                                    size: 18,
+                                    color: _quantity > 1 
+                                        ? Colors.black 
+                                        : Colors.grey.shade400,
                                   ),
                                 ),
                               ),
-                              IconButton(
-                                onPressed: _quantity < widget.product.stock 
-                                    ? () => setState(() => _quantity++) 
-                                    : null,
-                                icon: const Icon(Icons.add_circle_outline),
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.blue.shade50,
-                                  foregroundColor: Colors.blue.shade600,
+                            ),
+                            Container(
+                              width: 60,
+                              height: 44,
+                              alignment: Alignment.center,
+                              child: Text(
+                                _quantity.toString(),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                        
-                        // Description
-                        Text(
-                          'Description',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
-                          ),
+                            ),
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _quantity < widget.product.stock 
+                                    ? () => setState(() => _quantity++) 
+                                    : null,
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 18,
+                                    color: _quantity < widget.product.stock 
+                                        ? Colors.black 
+                                        : Colors.grey.shade400,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.product.description,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
-          
-          // Add to Cart Button
-          if (widget.product.stock > 0)
-            Container(
-              padding: const EdgeInsets.all(16),
+        ],
+      ),
+      
+      // Fixed "Add to Cart" Footer Button
+      bottomNavigationBar: widget.product.stock > 0
+          ? Container(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 12,
+                bottom: MediaQuery.of(context).padding.bottom + 16,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.grey.shade300,
-                    blurRadius: 4,
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),
                 ],
               ),
               child: Consumer<CartService>(
                 builder: (context, cartService, child) {
-                  final isInCart = cartService.isInCart(widget.product.id);
-                  
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            cartService.addToCart(widget.product, quantity: _quantity);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Added $_quantity ${widget.product.name} to cart'),
-                                duration: const Duration(seconds: 2),
-                                action: SnackBarAction(
-                                  label: 'View Cart',
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade600,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            isInCart ? 'Add More to Cart' : 'Add to Cart',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        cartService.addToCart(widget.product, quantity: _quantity);
+                        NotificationService.showSuccess(
+                          context, 
+                          'Added $_quantity ${widget.product.name} to cart'
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Add to Cart',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      if (isInCart)
-                        ElevatedButton(
-                          onPressed: () {
-                            cartService.removeFromCart(widget.product.id);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Removed from cart'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red.shade600,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 16,
-                              horizontal: 24,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Icon(Icons.delete),
-                        ),
-                    ],
+                    ),
                   );
                 },
               ),
-            ),
-        ],
-      ),
+            )
+          : null,
     );
   }
 
-  Widget _buildImageSection() {
+  Widget _buildDominantImageCarousel() {
     return Container(
-      height: 300,
-      color: Colors.white,
-      child: Column(
+      height: MediaQuery.of(context).size.height * 0.55, // Substantial visual height - dominant focal point
+      width: double.infinity,
+      margin: EdgeInsets.only(top: MediaQuery.of(context).padding.top), // Add top margin for status bar
+      child: Stack(
         children: [
-          // Main Image
-          Expanded(
-            child: PageView.builder(
+          // Full-Width, Edge-to-Edge, Horizontally Scrollable Carousel
+          if (!widget.product.hasImages)
+            // No images - show placeholder
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.grey.shade100,
+              child: Center(
+                child: Icon(
+                  Icons.image_not_supported, 
+                  size: 80,
+                  color: Colors.grey.shade400,
+                ),
+              ),
+            )
+          else
+            // Horizontally scrollable image carousel - absolute edge to edge
+            PageView.builder(
               itemCount: widget.product.images.length,
               onPageChanged: (index) {
                 setState(() {
@@ -306,25 +299,39 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               },
               itemBuilder: (context, index) {
                 return Container(
-                  margin: const EdgeInsets.all(16),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: widget.product.images.isNotEmpty
-                        ? _buildProductImage(widget.product.images[index])
-                        : Container(
-                            color: Colors.grey.shade200,
-                            child: const Icon(Icons.image_not_supported, size: 50),
-                          ),
-                  ),
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: _buildProductImage(widget.product.images[index]),
                 );
               },
             ),
+          
+          // Back Arrow - Properly positioned to avoid status bar overlap
+          Positioned(
+            top: 12, // Now positioned relative to container with top margin
+            left: 16,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back, size: 20),
+                color: Colors.white,
+                padding: EdgeInsets.zero,
+              ),
+            ),
           ),
           
-          // Image Indicators
-          if (widget.product.images.length > 1)
-            Padding(
-              padding: const EdgeInsets.all(16),
+          // Pagination Dots - Overlayed directly on bottom center of image carousel
+          if (widget.product.hasImages && widget.product.images.length > 1)
+            Positioned(
+              bottom: 20,
+              left: 0,
+              right: 0,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
@@ -336,8 +343,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: index == _selectedImageIndex
-                          ? Colors.blue.shade600
-                          : Colors.grey.shade300,
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.5),
                     ),
                   ),
                 ),

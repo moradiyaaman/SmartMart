@@ -348,6 +348,33 @@ class UserProfileService {
     }
   }
 
+  // Get default address
+  static Future<UserAddress?> getDefaultAddress() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      final querySnapshot = await _firestore
+          .collection(_profilesCollection)
+          .doc(user.uid)
+          .collection(_addressesCollection)
+          .where('isDefault', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        return UserAddress.fromFirestore(querySnapshot.docs.first);
+      }
+      
+      // If no default address, return the first address if any exists
+      final allAddresses = await getUserAddresses(user.uid);
+      return allAddresses.isNotEmpty ? allAddresses.first : null;
+    } catch (e) {
+      print('Error getting default address: $e');
+      return null;
+    }
+  }
+
   // Stream user profile changes
   static Stream<UserProfile?> getUserProfileStream() {
     final user = _auth.currentUser;

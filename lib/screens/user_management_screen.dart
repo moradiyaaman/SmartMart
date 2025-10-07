@@ -26,12 +26,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   Future<void> _checkPermissions() async {
     try {
       final canChange = await _adminService.isCurrentUserSuperAdmin();
-      print('User can change roles: $canChange');
       setState(() {
         _canChangeRoles = canChange;
       });
     } catch (e) {
-      print('Error checking permissions: $e');
       setState(() {
         _canChangeRoles = false;
       });
@@ -236,12 +234,6 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   }
 
   Widget _buildUserCard(models.AppUser user) {
-    // Debug output to see what's happening
-    print('DEBUG: User ${user.email} has role: ${user.role} (${user.role.toString()})');
-    print('DEBUG: Role comparison - Is customer? ${user.role == models.UserRole.customer}');
-    print('DEBUG: Can change roles? $_canChangeRoles');
-    print('DEBUG: Should show button? ${_canChangeRoles && user.role == models.UserRole.customer}');
-    
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,

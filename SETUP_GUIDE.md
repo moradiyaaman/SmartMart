@@ -69,12 +69,17 @@ updatedAt: [timestamp]
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Products - read for all, write for admin only
+    // Products - read for all, full write for admin only, stock updates for authenticated users
     match /products/{productId} {
       allow read: if true;
+      // Allow admin full write access
       allow write: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Allow authenticated users to update only the stock field (for order processing)
+      allow update: if request.auth != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) &&
+        request.resource.data.stock >= 0;
     }
     
     // Orders - users can read/write their own orders, admin can access all

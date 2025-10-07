@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/cart_service.dart';
 import '../services/order_service.dart';
+import '../services/user_profile_service.dart';
 import '../models/app_models.dart';
-import 'customer_home_screen.dart';
 import 'my_orders_screen.dart';
+import 'address_form_screen.dart';
+import 'address_selection_screen.dart';
+import 'product_catalog_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -14,14 +17,10 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _pincodeController = TextEditingController();
-  
   String _selectedPaymentMethod = 'Cash on Delivery';
   bool _isPlacingOrder = false;
+  bool _isLoadingAddress = true;
+  UserAddress? _selectedAddress;
   
   final List<String> _paymentMethods = [
     'Cash on Delivery',
@@ -32,17 +31,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   ];
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _addressController.dispose();
-    _pincodeController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadDefaultAddress();
+  }
+
+  Future<void> _loadDefaultAddress() async {
+    setState(() => _isLoadingAddress = true);
+    
+    try {
+      final defaultAddress = await UserProfileService.getDefaultAddress();
+      if (mounted) {
+        setState(() {
+          _selectedAddress = defaultAddress;
+          _isLoadingAddress = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingAddress = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading address: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _placeOrder() async {
-    if (!_formKey.currentState!.validate()) return;
-
     final cartService = Provider.of<CartService>(context, listen: false);
     
     if (cartService.isEmpty) {
@@ -52,94 +70,112 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    if (_selectedAddress == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a delivery address')),
+      );
+      return;
+    }
+
     setState(() => _isPlacingOrder = true);
 
     try {
-      // Create delivery address from form data
-      final now = DateTime.now();
-      final deliveryAddress = UserAddress(
-        id: '',
-        label: 'Delivery Address',
-        fullName: _nameController.text.trim(),
-        addressLine1: _addressController.text.trim(),
-        addressLine2: '',
-        city: 'City', // You might want to add city field to form
-        state: 'State', // You might want to add state field to form
-        pincode: _pincodeController.text.trim(),
-        phoneNumber: _phoneController.text.trim(),
-        isDefault: false,
-        createdAt: now,
-        updatedAt: now,
-      );
-
-      // Create order using OrderService
       final orderId = await OrderService().createOrder(
         cartItems: cartService.items,
-        deliveryAddress: deliveryAddress,
+        deliveryAddress: _selectedAddress!,
         paymentMethod: _selectedPaymentMethod,
         notes: 'Order placed from checkout',
       );
 
+      // Clear cart after successful order
+      await cartService.clearCart();
+
       if (mounted) {
-        // Show success dialog
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('Order Placed Successfully!'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: 60,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Your order #${orderId.substring(0, 8).toUpperCase()} has been placed successfully.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'You will receive updates on your order status.',
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const CustomerHomeScreen(),
+          builder: (dialogContext) {
+            bool isContinueShoppingLoading = false;
+
+            Future<void> navigateToCatalog() async {
+              await Navigator.of(dialogContext, rootNavigator: true).pushNamedAndRemoveUntil(
+                ProductCatalogScreen.routeName,
+                (route) => false,
+              );
+            }
+
+            return StatefulBuilder(
+              builder: (context, setDialogState) {
+                return AlertDialog(
+                  title: const Text('Order Placed Successfully!'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        color: Colors.green,
+                        size: 60,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Your order #${orderId.substring(0, 8).toUpperCase()} has been placed successfully.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'You will receive updates on your order status.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: isContinueShoppingLoading
+                          ? null
+                          : () async {
+                              setDialogState(() => isContinueShoppingLoading = true);
+                              await navigateToCatalog();
+                            },
+                      child: isContinueShoppingLoading
+                          ? const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 12),
+                                Text('Loading...'),
+                              ],
+                            )
+                          : const Text('Continue Shopping'),
                     ),
-                    (route) => false,
-                  );
-                },
-                child: const Text('Continue Shopping'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context); // Close dialog
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyOrdersScreen(),
+                    ElevatedButton(
+                      onPressed: isContinueShoppingLoading
+                          ? null
+                          : () {
+                              Navigator.pop(dialogContext);
+                              Navigator.of(dialogContext, rootNavigator: true).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (context) => const MyOrdersScreen(),
+                                ),
+                              );
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('View Orders'),
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('View Orders'),
-              ),
-            ],
-          ),
+                  ],
+                );
+              },
+            );
+          },
         );
       }
     } catch (e) {
@@ -185,30 +221,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Order Summary
-                        _buildOrderSummary(cartService),
-                        
-                        const SizedBox(height: 24),
-                        
-                        // Delivery Address
-                        _buildAddressSection(),
-                        
-                        const SizedBox(height: 24),
-                        
-                        // Payment Method
-                        _buildPaymentSection(),
-                        
-                        const SizedBox(height: 24),
-                        
-                        // Bill Summary
-                        _buildBillSummary(cartService),
-                      ],
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Order Summary
+                      _buildOrderSummary(cartService),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Delivery Address
+                      _buildAddressSection(),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Payment Method
+                      _buildPaymentSection(),
+                      
+                      const SizedBox(height: 24),
+                      
+                      // Bill Summary
+                      _buildBillSummary(cartService),
+                    ],
                   ),
                 ),
               ),
@@ -302,17 +335,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
+                    Text('Qty: ${item.quantity}'),
+                    const SizedBox(width: 16),
                     Text(
-                      'Qty: ${item.quantity}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '₹${item.totalPrice.toStringAsFixed(2)}',
+                      '₹${(item.product.price * item.quantity).toStringAsFixed(2)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -341,73 +369,180 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Full Name',
-                border: OutlineInputBorder(),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your full name';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Phone Number',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.phone,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your phone number';
-                }
-                if (value.trim().length < 10) {
-                  return 'Please enter a valid phone number';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _addressController,
-              decoration: const InputDecoration(
-                labelText: 'Address',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your address';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _pincodeController,
-              decoration: const InputDecoration(
-                labelText: 'Pincode',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter pincode';
-                }
-                if (value.trim().length != 6) {
-                  return 'Please enter a valid 6-digit pincode';
-                }
-                return null;
-              },
-            ),
+            if (_isLoadingAddress)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_selectedAddress == null)
+              _buildNoAddressState()
+            else
+              _buildSelectedAddressDisplay(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildNoAddressState() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                Icons.location_off,
+                size: 48,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No saved addresses',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Add your delivery address to continue',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey.shade600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              final result = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddressFormScreen(isFirstAddress: false),
+                ),
+              );
+              if (result == true) {
+                _loadDefaultAddress();
+              }
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Add New Address'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade600,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectedAddressDisplay() {
+    final address = _selectedAddress!;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    color: Colors.green.shade600,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Delivering to ${address.fullName}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                address.fullName,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${address.addressLine1}${address.addressLine2.isNotEmpty ? ', ${address.addressLine2}' : ''}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${address.city}, ${address.state}, ${address.pincode}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              if (address.phoneNumber.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Phone: ${address.phoneNumber}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextButton.icon(
+          onPressed: () async {
+            final selectedAddress = await Navigator.push<UserAddress>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => AddressSelectionScreen(
+                  currentSelectedAddress: _selectedAddress,
+                ),
+              ),
+            );
+            if (selectedAddress != null) {
+              setState(() {
+                _selectedAddress = selectedAddress;
+              });
+            }
+          },
+          icon: const Icon(Icons.edit_location),
+          label: const Text('Change delivery address'),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.blue.shade600,
+            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          ),
+        ),
+      ],
     );
   }
 
@@ -426,17 +561,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 12),
-            ..._paymentMethods.map((method) => RadioListTile<String>(
-              title: Text(method),
-              value: method,
-              groupValue: _selectedPaymentMethod,
-              onChanged: (value) {
-                setState(() {
-                  _selectedPaymentMethod = value!;
-                });
-              },
-            )),
+            const SizedBox(height: 16),
+            Column(
+              children: _paymentMethods.map((method) {
+                return RadioListTile<String>(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(method),
+                  value: method,
+                  groupValue: _selectedPaymentMethod,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedPaymentMethod = value!;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
           ],
         ),
       ),
@@ -444,9 +584,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _buildBillSummary(CartService cartService) {
-    final subtotal = cartService.totalAmount;
-    final deliveryFee = subtotal > 500 ? 0.0 : 50.0;
-    final total = subtotal + deliveryFee;
+    final deliveryFee = cartService.totalAmount > 500 ? 0.0 : 50.0;
+    final totalAmount = cartService.totalAmount + deliveryFee;
 
     return Card(
       elevation: 2,
@@ -462,59 +601,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Subtotal'),
-                Text('₹${subtotal.toStringAsFixed(2)}'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Delivery Fee'),
-                Text(
-                  deliveryFee == 0 ? 'FREE' : '₹${deliveryFee.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: deliveryFee == 0 ? Colors.green : null,
-                  ),
-                ),
-              ],
-            ),
-            if (deliveryFee == 0)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
+            const SizedBox(height: 16),
+            _buildBillRow('Subtotal', '₹${cartService.totalAmount.toStringAsFixed(2)}'),
+            _buildBillRow('Delivery Fee', deliveryFee > 0 ? '₹${deliveryFee.toStringAsFixed(2)}' : 'FREE'),
+            if (cartService.totalAmount <= 500)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, top: 4),
                 child: Text(
-                  'Free delivery on orders above ₹500',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green,
+                  'Add ₹${(500 - cartService.totalAmount + 1).toStringAsFixed(0)} more for free delivery',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.orange.shade600,
                   ),
                 ),
               ),
             const Divider(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Total Amount',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  '₹${total.toStringAsFixed(2)}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade600,
-                  ),
-                ),
-              ],
+            _buildBillRow(
+              'Total Amount',
+              '₹${totalAmount.toStringAsFixed(2)}',
+              isTotal: true,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBillRow(String label, String amount, {bool isTotal = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            amount,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: isTotal ? Colors.green.shade600 : null,
+            ),
+          ),
+        ],
       ),
     );
   }

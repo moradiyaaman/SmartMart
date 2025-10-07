@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/app_models.dart' as models;
-import 'cart_service.dart';
 
 class OrderService {
   static final OrderService _instance = OrderService._internal();
@@ -57,9 +56,22 @@ class OrderService {
 
     // Save to Firestore
     final docRef = await _firestore.collection('orders').add(order.toMap());
-    
+
+    // Decrement stock for each product in the order
+    for (final item in orderItems) {
+      final productRef = _firestore.collection('products').doc(item.productId);
+      await _firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(productRef);
+        if (!snapshot.exists) return;
+        final currentStock = (snapshot.data()?['stock'] ?? 0) as int;
+        final newStock = currentStock - item.quantity;
+        transaction.update(productRef, {'stock': newStock < 0 ? 0 : newStock});
+      });
+    }
+
     // Clear cart after successful order creation
-    CartService().clearCart();
+    // Note: Cart will be cleared automatically via the CartService instance
+    // that's managed by the Provider system
     
     return docRef.id;
   }
@@ -99,25 +111,52 @@ class OrderService {
     }
   }
 
-  // Update order status (admin function)
+  // Update order status (admin function) - SIMPLIFIED
   Future<void> updateOrderStatus(String orderId, models.OrderStatus status) async {
     try {
+      print('🔄 SIMPLE UPDATE: Changing order $orderId to $status');
+      
+      // If admin is changing to cancelled or refunded, restore stock
+      if (status == models.OrderStatus.cancelled || status == models.OrderStatus.refunded) {
+        final order = await getOrder(orderId);
+        if (order != null) {
+          print('� SIMPLE UPDATE: Restoring stock for ${order.items.length} items');
+          
+          for (final item in order.items) {
+            final productRef = _firestore.collection('products').doc(item.productId);
+            final productDoc = await productRef.get();
+            
+            if (productDoc.exists) {
+              final currentStock = (productDoc.data()?['stock'] ?? 0) as int;
+              final newStock = currentStock + item.quantity;
+              
+              await productRef.update({'stock': newStock});
+              print('🔄 SIMPLE UPDATE: Restored ${item.quantity} units for ${item.productId}');
+            }
+          }
+        }
+      }
+      
       await _firestore.collection('orders').doc(orderId).update({
         'status': status.toString().split('.').last,
         'updatedAt': Timestamp.fromDate(DateTime.now()),
       });
+      
+      print('✅ SIMPLE UPDATE: Order status updated successfully');
     } catch (e) {
-      print('Error updating order status: $e');
+      print('❌ SIMPLE UPDATE ERROR: $e');
       rethrow;
     }
   }
 
-  // Cancel order (user function)
+  // Cancel order (user function) - SIMPLE VERSION
   Future<void> cancelOrder(String orderId) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
     try {
+      print('🚀 SIMPLE CANCEL: Starting cancel for order $orderId');
+      
       final order = await getOrder(orderId);
       if (order == null) throw Exception('Order not found');
       
@@ -129,10 +168,115 @@ class OrderService {
         throw Exception('Order cannot be cancelled at this stage');
       }
 
-      await updateOrderStatus(orderId, models.OrderStatus.cancelled);
+      print('🚀 SIMPLE CANCEL: Found order with ${order.items.length} items');
+      
+      // STEP 1: Restore stock FIRST (simple approach)
+      for (final item in order.items) {
+        print('🚀 SIMPLE CANCEL: Restoring ${item.quantity} units for product ${item.productId}');
+        
+        final productRef = _firestore.collection('products').doc(item.productId);
+        final productDoc = await productRef.get();
+        
+        if (productDoc.exists) {
+          final currentStock = (productDoc.data()?['stock'] ?? 0) as int;
+          final newStock = currentStock + item.quantity;
+          
+          await productRef.update({'stock': newStock});
+          print('🚀 SIMPLE CANCEL: Updated stock from $currentStock to $newStock');
+        }
+      }
+      
+      // STEP 2: Update order status
+      await _firestore.collection('orders').doc(orderId).update({
+        'status': 'cancelled',
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+      
+      print('🚀 SIMPLE CANCEL: Order cancelled successfully!');
     } catch (e) {
-      print('Error cancelling order: $e');
+      print('❌ SIMPLE CANCEL ERROR: $e');
       rethrow;
+    }
+  }
+
+  // Refund order (admin function) - SIMPLIFIED
+  Future<void> refundOrder(String orderId) async {
+    try {
+      print('🔄 SIMPLE REFUND: Starting refund for order $orderId');
+      
+      final order = await getOrder(orderId);
+      if (order == null) throw Exception('Order not found');
+      
+      if (order.status != models.OrderStatus.delivered && order.status != models.OrderStatus.confirmed) {
+        throw Exception('Order cannot be refunded at this stage');
+      }
+
+      // Restore stock first
+      for (final item in order.items) {
+        final productRef = _firestore.collection('products').doc(item.productId);
+        final productDoc = await productRef.get();
+        
+        if (productDoc.exists) {
+          final currentStock = (productDoc.data()?['stock'] ?? 0) as int;
+          final newStock = currentStock + item.quantity;
+          
+          await productRef.update({'stock': newStock});
+          print('🔄 SIMPLE REFUND: Restored ${item.quantity} units for ${item.productId}');
+        }
+      }
+      
+      // Update status to refunded
+      await _firestore.collection('orders').doc(orderId).update({
+        'status': 'refunded',
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+      
+      print('✅ SIMPLE REFUND: Order refunded successfully!');
+    } catch (e) {
+      print('❌ SIMPLE REFUND ERROR: $e');
+      rethrow;
+    }
+  }
+
+  // 🧪 TEST METHOD - Direct stock restoration test
+  Future<void> testStockRestoration(String orderId) async {
+    try {
+      print('🧪 TEST: Starting direct stock restoration test for order $orderId');
+      
+      // Get the order
+      final order = await getOrder(orderId);
+      if (order == null) {
+        print('❌ TEST: Order not found');
+        return;
+      }
+      
+      print('🧪 TEST: Order found with ${order.items.length} items');
+      print('🧪 TEST: Current order status: ${order.status}');
+      
+      // Restore stock for each item
+      for (final item in order.items) {
+        print('🧪 TEST: Processing item ${item.productName} (${item.productId})');
+        print('🧪 TEST: Quantity to restore: ${item.quantity}');
+        
+        // Get current stock
+        final productDoc = await _firestore.collection('products').doc(item.productId).get();
+        if (productDoc.exists) {
+          final currentStock = (productDoc.data()?['stock'] ?? 0) as int;
+          print('🧪 TEST: Current stock: $currentStock');
+          
+          // Update stock
+          final newStock = currentStock + item.quantity;
+          await _firestore.collection('products').doc(item.productId).update({'stock': newStock});
+          
+          print('🧪 TEST: ✅ Updated stock from $currentStock to $newStock');
+        } else {
+          print('🧪 TEST: ❌ Product not found in database');
+        }
+      }
+      
+      print('🧪 TEST: Stock restoration test completed!');
+    } catch (e) {
+      print('🧪 TEST: ❌ Error during test: $e');
     }
   }
 

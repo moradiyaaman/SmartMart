@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/admin_service.dart';
-import '../services/user_profile_service.dart';
+import '../utils/notification_service.dart';
 import 'admin_dashboard.dart';
 import 'customer_home_screen.dart';
 import 'profile_setup_screen.dart';
@@ -36,14 +36,49 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   bool _obscureSignupPassword = true;
   bool _obscureConfirmPassword = true;
 
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging) return;
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  InputDecoration _buildInputDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      suffixIcon: suffixIcon,
+      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF1976D2), width: 2),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_handleTabChange);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
@@ -70,83 +105,52 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       final user = FirebaseAuth.instance.currentUser;
       if (user != null && mounted) {
         final isAdmin = await AdminService().isUserAdmin(user.uid);
-        print('Login successful for ${user.email}, isAdmin: $isAdmin');
         
         if (mounted) {
           if (isAdmin) {
-            print('Navigating to AdminDashboard...');
             // Clear any previous navigation stack
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (context) => const AdminDashboard()),
               (route) => false,
             );
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Admin login successful!'),
-                backgroundColor: Colors.green,
-              ),
-            );
+            NotificationService.showSuccess(context, AuthMessages.loginSuccess);
           } else {
-            print('Navigating to Customer screens...');
-            // Check if customer profile is complete
-            final isProfileComplete = await UserProfileService.isProfileCompleted();
-            if (mounted) {
-              if (isProfileComplete) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const CustomerHomeScreen()),
-                  (route) => false,
-                );
-              } else {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const ProfileSetupScreen()),
-                  (route) => false,
-                );
-              }
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Customer login successful!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            }
+            // For login, always go directly to home screen (skip profile setup)
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const CustomerHomeScreen()),
+              (route) => false,
+            );
+            NotificationService.showSuccess(context, AuthMessages.loginSuccess);
           }
         }
       }
     } on FirebaseAuthException catch (e) {
-      String message = 'Login failed';
-      switch (e.code) {
-        case 'user-not-found':
-          message = 'No user found with this email.';
-          break;
-        case 'wrong-password':
-          message = 'Wrong password provided.';
-          break;
-        case 'invalid-email':
-          message = 'Invalid email address.';
-          break;
-        case 'user-disabled':
-          message = 'This account has been disabled.';
-          break;
-        default:
-          message = e.message ?? 'Login failed';
-      }
-      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.red,
-          ),
-        );
+        String message;
+        switch (e.code) {
+          case 'user-not-found':
+            message = AuthMessages.userNotFound;
+            break;
+          case 'wrong-password':
+            message = AuthMessages.wrongPassword;
+            break;
+          case 'invalid-email':
+            message = AuthMessages.invalidEmail;
+            break;
+          case 'user-disabled':
+            message = AuthMessages.userDisabled;
+            break;
+          case 'invalid-credential':
+            message = AuthMessages.invalidCredentials;
+            break;
+          default:
+            message = e.message ?? AuthMessages.unknownError;
+        }
+        NotificationService.showError(context, message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An error occurred: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        NotificationService.showError(context, AuthMessages.networkError);
       }
     } finally {
       if (mounted) {
@@ -186,12 +190,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        NotificationService.showSuccess(context, AuthMessages.signupSuccess);
         
         // Navigate to profile setup screen
         Navigator.of(context).pushAndRemoveUntil(
@@ -200,37 +199,26 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         );
       }
     } on FirebaseAuthException catch (e) {
-      String message = 'Signup failed';
-      switch (e.code) {
-        case 'weak-password':
-          message = 'The password provided is too weak.';
-          break;
-        case 'email-already-in-use':
-          message = 'An account already exists with this email.';
-          break;
-        case 'invalid-email':
-          message = 'Invalid email address.';
-          break;
-        default:
-          message = e.message ?? 'Signup failed';
-      }
-      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.red,
-          ),
-        );
+        String message;
+        switch (e.code) {
+          case 'weak-password':
+            message = AuthMessages.weakPassword;
+            break;
+          case 'email-already-in-use':
+            message = AuthMessages.emailAlreadyInUse;
+            break;
+          case 'invalid-email':
+            message = AuthMessages.invalidEmail;
+            break;
+          default:
+            message = e.message ?? AuthMessages.unknownError;
+        }
+        NotificationService.showError(context, message);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('An error occurred: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        NotificationService.showError(context, AuthMessages.networkError);
       }
     } finally {
       if (mounted) {
@@ -247,10 +235,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           TextFormField(
             controller: _loginEmailController,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Email',
-              prefixIcon: Icon(Icons.email_outlined),
-              border: OutlineInputBorder(),
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email],
+            decoration: _buildInputDecoration(
+              label: 'Email',
+              icon: Icons.email_outlined,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -266,14 +255,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           TextFormField(
             controller: _loginPasswordController,
             obscureText: _obscureLoginPassword,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline),
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            decoration: _buildInputDecoration(
+              label: 'Password',
+              icon: Icons.lock_outline,
               suffixIcon: IconButton(
                 icon: Icon(_obscureLoginPassword ? Icons.visibility : Icons.visibility_off),
                 onPressed: () => setState(() => _obscureLoginPassword = !_obscureLoginPassword),
               ),
-              border: const OutlineInputBorder(),
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -322,10 +312,10 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         children: [
           TextFormField(
             controller: _signupNameController,
-            decoration: const InputDecoration(
-              labelText: 'Full Name',
-              prefixIcon: Icon(Icons.person_outline),
-              border: OutlineInputBorder(),
+            textInputAction: TextInputAction.next,
+            decoration: _buildInputDecoration(
+              label: 'Full Name',
+              icon: Icons.person_outline,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -341,10 +331,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           TextFormField(
             controller: _signupEmailController,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Email',
-              prefixIcon: Icon(Icons.email_outlined),
-              border: OutlineInputBorder(),
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.email],
+            decoration: _buildInputDecoration(
+              label: 'Email',
+              icon: Icons.email_outlined,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -360,10 +351,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           TextFormField(
             controller: _signupPhoneController,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: 'Phone Number',
-              prefixIcon: Icon(Icons.phone_outlined),
-              border: OutlineInputBorder(),
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.telephoneNumber],
+            decoration: _buildInputDecoration(
+              label: 'Phone Number',
+              icon: Icons.phone_outlined,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -379,14 +371,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           TextFormField(
             controller: _signupPasswordController,
             obscureText: _obscureSignupPassword,
-            decoration: InputDecoration(
-              labelText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline),
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.newPassword],
+            decoration: _buildInputDecoration(
+              label: 'Password',
+              icon: Icons.lock_outline,
               suffixIcon: IconButton(
                 icon: Icon(_obscureSignupPassword ? Icons.visibility : Icons.visibility_off),
                 onPressed: () => setState(() => _obscureSignupPassword = !_obscureSignupPassword),
               ),
-              border: const OutlineInputBorder(),
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -402,14 +395,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           TextFormField(
             controller: _signupConfirmPasswordController,
             obscureText: _obscureConfirmPassword,
-            decoration: InputDecoration(
-              labelText: 'Confirm Password',
-              prefixIcon: const Icon(Icons.lock_outline),
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.newPassword],
+            decoration: _buildInputDecoration(
+              label: 'Confirm Password',
+              icon: Icons.lock_outline,
               suffixIcon: IconButton(
                 icon: Icon(_obscureConfirmPassword ? Icons.visibility : Icons.visibility_off),
                 onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
               ),
-              border: const OutlineInputBorder(),
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -454,98 +448,164 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildBranding(double iconSize, ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1976D2).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.shopping_cart,
+            size: iconSize,
+            color: const Color(0xFF1976D2),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'SmartMart',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF1976D2),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Your Smart Shopping Companion',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.grey.shade600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 40),
-              // App Logo/Title
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1976D2).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
+        top: true,
+        bottom: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final mediaQuery = MediaQuery.of(context);
+            final viewInsets = mediaQuery.viewInsets;
+            final isKeyboardVisible = viewInsets.bottom > 0;
+            final isWide = constraints.maxWidth >= 600;
+            final horizontalPadding = isWide ? 32.0 : 16.0;
+            final maxContentWidth = isWide ? 480.0 : double.infinity;
+            final availableHeight = constraints.maxHeight - viewInsets.bottom;
+            final minContentHeight = availableHeight > 0 ? availableHeight : constraints.maxHeight;
+            final topSpacing = isKeyboardVisible
+                ? 12.0
+                : (constraints.maxHeight >= 760 ? 56.0 : 32.0);
+            final logoSize = isWide
+                ? 100.0
+                : (constraints.maxHeight >= 760 ? 88.0 : 72.0);
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: viewInsets.bottom),
+              child: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: isKeyboardVisible ? 16.0 : 24.0,
                 ),
-                child: const Column(
-                  children: [
-                    Icon(
-                      Icons.shopping_cart,
-                      size: 60,
-                      color: Color(0xFF1976D2),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: maxContentWidth,
+                      minHeight: minContentHeight,
                     ),
-                    SizedBox(height: 8),
-                    Text(
-                      'SmartMart',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1976D2),
-                      ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: topSpacing),
+                        _buildBranding(logoSize, theme),
+                        SizedBox(height: isKeyboardVisible ? 16.0 : 32.0),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: TabBar(
+                            controller: _tabController,
+                            labelColor: Colors.white,
+                            unselectedLabelColor: Colors.grey.shade600,
+                            indicator: BoxDecoration(
+                              color: const Color(0xFF1976D2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            indicatorSize: TabBarIndicatorSize.tab,
+                            labelStyle: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                            unselectedLabelStyle: theme.textTheme.labelLarge,
+                            tabs: const [
+                              Tab(text: 'Login'),
+                              Tab(text: 'Sign Up'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          transitionBuilder: (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: SizeTransition(
+                              sizeFactor: animation,
+                              axisAlignment: -1,
+                              child: child,
+                            ),
+                          ),
+                          child: KeyedSubtree(
+                            key: ValueKey(_tabController.index),
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: isKeyboardVisible ? 8.0 : 0.0),
+                              child: _tabController.index == 0
+                                  ? _buildLoginForm()
+                                  : _buildSignupForm(),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: isKeyboardVisible ? 16.0 : 32.0),
+                        SafeArea(
+                          top: false,
+                          minimum: const EdgeInsets.only(bottom: 8),
+                          child: Center(
+                            child: TextButton(
+                              onPressed: () => _showAdminLoginDialog(),
+                              child: const Text(
+                                'Admin Login',
+                                style: TextStyle(
+                                  color: Color(0xFF1976D2),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      'Your Smart Shopping Companion',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 40),
-              // Tab Bar
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.grey.shade600,
-                  indicator: BoxDecoration(
-                    color: const Color(0xFF1976D2),
-                    borderRadius: BorderRadius.circular(8),
                   ),
-                  tabs: const [
-                    Tab(text: 'Login'),
-                    Tab(text: 'Sign Up'),
-                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              // Tab Views
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    SingleChildScrollView(
-                      child: _buildLoginForm(),
-                    ),
-                    SingleChildScrollView(
-                      child: _buildSignupForm(),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Admin Login Button
-              TextButton(
-                onPressed: () => _showAdminLoginDialog(),
-                child: const Text(
-                  'Admin Login',
-                  style: TextStyle(
-                    color: Color(0xFF1976D2),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -616,7 +676,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                   
                   // Check if user is admin
                   bool isAdmin = await AdminService().isUserAdmin(userCredential.user!.uid);
-                  print('Admin login check for ${userCredential.user!.uid}: $isAdmin');
                   
                   if (!isAdmin) {
                     // Sign out if not admin
@@ -631,22 +690,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                       MaterialPageRoute(builder: (context) => const AdminDashboard()),
                       (route) => false,
                     );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Admin login successful!'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
+                    NotificationService.showSuccess(context, AuthMessages.loginSuccess);
                   }
                 } catch (e) {
-                  print('Admin login error: $e');
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Admin login failed: ${e.toString()}'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                    NotificationService.showError(context, 'Admin login failed: ${e.toString()}');
                   }
                 } finally {
                   if (mounted) {

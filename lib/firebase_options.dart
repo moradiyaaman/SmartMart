@@ -39,48 +39,48 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'your-web-api-key',
-    appId: 'your-web-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    authDomain: 'your-project-id.firebaseapp.com',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyBqJ5XXXXXXXXXXXXXXXXXXXXXXXXXXX', // Replace with your actual Web API key
+    appId: '1:123456789:web:abcdefghijklmnop', // Replace with your actual Web App ID
+    messagingSenderId: '123456789', // Replace with your actual Sender ID
+    projectId: 'smartmart-demo', // Replace with your actual Project ID
+    authDomain: 'smartmart-demo.firebaseapp.com',
+    storageBucket: 'smartmart-demo.appspot.com',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'your-android-api-key',
-    appId: 'your-android-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyBqJ5XXXXXXXXXXXXXXXXXXXXXXXXXXX', // Replace with your actual Android API key
+    appId: '1:123456789:android:abcdefghijk123456', // Replace with your actual Android App ID
+    messagingSenderId: '123456789', // Replace with your actual Sender ID
+    projectId: 'smartmart-demo', // Replace with your actual Project ID
+    storageBucket: 'smartmart-demo.appspot.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'your-ios-api-key',
-    appId: 'your-ios-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project-id.appspot.com',
-    iosClientId: 'your-ios-client-id',
+    apiKey: 'AIzaSyBqJ5XXXXXXXXXXXXXXXXXXXXXXXXXXX', // Replace with your actual iOS API key
+    appId: '1:123456789:ios:abcdefghijk123456', // Replace with your actual iOS App ID
+    messagingSenderId: '123456789', // Replace with your actual Sender ID
+    projectId: 'smartmart-demo', // Replace with your actual Project ID
+    storageBucket: 'smartmart-demo.appspot.com',
+    iosClientId: '123456789-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com',
     iosBundleId: 'com.example.smartmart',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'your-ios-api-key',
-    appId: 'your-ios-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    storageBucket: 'your-project-id.appspot.com',
-    iosClientId: 'your-ios-client-id',
+    apiKey: 'AIzaSyBqJ5XXXXXXXXXXXXXXXXXXXXXXXXXXX', // Replace with your actual iOS API key
+    appId: '1:123456789:ios:abcdefghijk123456', // Replace with your actual iOS App ID
+    messagingSenderId: '123456789', // Replace with your actual Sender ID
+    projectId: 'smartmart-demo', // Replace with your actual Project ID
+    storageBucket: 'smartmart-demo.appspot.com',
+    iosClientId: '123456789-abcdefghijklmnopqrstuvwxyz123456.apps.googleusercontent.com',
     iosBundleId: 'com.example.smartmart',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'your-web-api-key',
-    appId: 'your-web-app-id',
-    messagingSenderId: 'your-sender-id',
-    projectId: 'your-project-id',
-    authDomain: 'your-project-id.firebaseapp.com',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyBqJ5XXXXXXXXXXXXXXXXXXXXXXXXXXX', // Replace with your actual Web API key
+    appId: '1:123456789:web:abcdefghijklmnop', // Replace with your actual Web App ID
+    messagingSenderId: '123456789', // Replace with your actual Sender ID
+    projectId: 'smartmart-demo', // Replace with your actual Project ID
+    authDomain: 'smartmart-demo.firebaseapp.com',
+    storageBucket: 'smartmart-demo.appspot.com',
   );
 }

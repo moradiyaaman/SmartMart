@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import '../models/app_models.dart';
 import '../services/cart_service.dart';
+import '../constants/approved_categories.dart';
 import 'product_detail_screen.dart';
 
 class ProductCatalogScreen extends StatefulWidget {
+  static const routeName = '/product-catalog';
+
   final String? selectedCategory;
   final String? searchQuery;
 
@@ -23,7 +27,6 @@ class ProductCatalogScreen extends StatefulWidget {
 class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedCategory;
-  bool _isAscending = true;
 
   Widget _buildProductImage(String imagePath) {
     if (imagePath.startsWith('assets/')) {
@@ -36,7 +39,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
           child: const Icon(Icons.image_not_supported, size: 40),
         ),
       );
-    } else {
+    } else if (imagePath.startsWith('http')) {
       // Network image
       return CachedNetworkImage(
         imageUrl: imagePath,
@@ -50,19 +53,22 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
           child: const Icon(Icons.image_not_supported, size: 40),
         ),
       );
+    } else {
+      // Local file path
+      return Image.file(
+        File(imagePath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.image_not_supported, size: 40),
+        ),
+      );
     }
   }
 
   final List<String> categories = [
     'All',
-    'Electronics',
-    'Fashion',
-    'Home & Garden',
-    'Sports',
-    'Books',
-    'Health & Beauty',
-    'Automotive',
-    'Toys & Games'
+    ...ApprovedCategories.categories
   ];
 
   @override
@@ -96,12 +102,16 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
   }
 
   List<Product> _filterProducts(List<Product> products) {
+    // First filter by approved categories only
+    List<Product> approvedProducts = products.where((product) =>
+        ApprovedCategories.isApproved(product.category)).toList();
+    
     if (_searchController.text.isEmpty) {
-      return products;
+      return approvedProducts;
     }
 
     final searchTerm = _searchController.text.toLowerCase();
-    return products.where((product) =>
+    return approvedProducts.where((product) =>
         product.name.toLowerCase().contains(searchTerm) ||
         product.description.toLowerCase().contains(searchTerm) ||
         product.category.toLowerCase().contains(searchTerm)).toList();
@@ -110,83 +120,8 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Products'),
-        backgroundColor: Colors.blue.shade600,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () async {
-              // Quick debug: Create a test product
-              try {
-                await FirebaseFirestore.instance.collection('products').add({
-                  'name': 'Debug Product',
-                  'description': 'Quick test product from catalog screen',
-                  'price': 99.99,
-                  'category': 'Electronics',
-                  'images': ['https://picsum.photos/400/400?random=${DateTime.now().millisecondsSinceEpoch}'],
-                  'stock': 10,
-                  'rating': 4.0,
-                  'reviewCount': 5,
-                  'isActive': true,
-                  'createdAt': FieldValue.serverTimestamp(),
-                  'updatedAt': FieldValue.serverTimestamp(),
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Debug product created!')),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error: $e')),
-                );
-              }
-            },
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              setState(() {
-                if (value == 'asc' || value == 'desc') {
-                  _isAscending = value == 'asc';
-                }
-              });
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'sort_name',
-                child: Text('Sort by Name'),
-              ),
-              const PopupMenuItem(
-                value: 'sort_price',
-                child: Text('Sort by Price'),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'asc',
-                child: Row(
-                  children: [
-                    Icon(_isAscending ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-                    const SizedBox(width: 8),
-                    const Text('Ascending'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'desc',
-                child: Row(
-                  children: [
-                    Icon(!_isAscending ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-                    const SizedBox(width: 8),
-                    const Text('Descending'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
+      body: SafeArea(
+        child: Column(
         children: [
           // Search Bar
           Container(
@@ -254,12 +189,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: _getProductsStream(),
               builder: (context, snapshot) {
-                print('ProductCatalog - Connection state: ${snapshot.connectionState}');
-                print('ProductCatalog - Has data: ${snapshot.hasData}');
-                print('ProductCatalog - Docs count: ${snapshot.data?.docs.length ?? 0}');
-                
                 if (snapshot.hasError) {
-                  print('ProductCatalog - Error: ${snapshot.error}');
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -326,7 +256,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                   padding: const EdgeInsets.all(16),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    childAspectRatio: 0.7,
+                    childAspectRatio: 0.75,
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                   ),
@@ -340,6 +270,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -374,8 +305,8 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                     ),
                     child: ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: product.images.isNotEmpty
-                          ? _buildProductImage(product.images.first)
+                      child: product.hasImages
+                          ? _buildProductImage(product.imageUrl)
                           : Container(
                               color: Colors.grey.shade200,
                               child: const Icon(Icons.image_not_supported),
@@ -386,87 +317,91 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
               ),
 
               // Product Details
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        product.name,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+              Padding(
+                padding: const EdgeInsets.all(6.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      product.name,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        product.category,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey.shade600,
-                        ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      product.description,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey.shade600,
+                        fontSize: 10,
                       ),
-                      const Spacer(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '₹${product.price.toStringAsFixed(2)}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        if (product.stock > 0)
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: IconButton(
+                              onPressed: () async {
+                                if (isInCart) {
+                                  await cartService.removeFromCart(product.id);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Removed from cart'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                } else {
+                                  await cartService.addToCart(product);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Added to cart'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: Icon(
+                                isInCart 
+                                    ? Icons.remove_shopping_cart 
+                                    : Icons.add_shopping_cart,
+                                size: 14,
+                                color: isInCart 
+                                    ? Colors.red 
+                                    : Colors.blue.shade600,
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                          )
+                        else
                           Text(
-                            '₹${product.price.toStringAsFixed(2)}',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue.shade600,
+                            'Out of Stock',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 10,
                             ),
                           ),
-                          if (product.stock > 0)
-                            SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: IconButton(
-                                onPressed: () {
-                                  if (isInCart) {
-                                    cartService.removeFromCart(product.id);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Removed from cart'),
-                                        duration: Duration(seconds: 1),
-                                      ),
-                                    );
-                                  } else {
-                                    cartService.addToCart(product);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Added to cart'),
-                                        duration: Duration(seconds: 1),
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: Icon(
-                                  isInCart 
-                                      ? Icons.remove_shopping_cart 
-                                      : Icons.add_shopping_cart,
-                                  size: 18,
-                                  color: isInCart 
-                                      ? Colors.red 
-                                      : Colors.blue.shade600,
-                                ),
-                                padding: EdgeInsets.zero,
-                              ),
-                            )
-                          else
-                            Text(
-                              'Out of Stock',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.red,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],

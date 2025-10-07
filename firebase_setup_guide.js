@@ -10,9 +10,14 @@ service cloud.firestore {
     // Allow read access to products for everyone
     match /products/{productId} {
       allow read: if true;
+      // Allow admin full write access
       allow write: if request.auth != null && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      // Allow authenticated users to update only the stock field (for order processing)
+      allow update: if request.auth != null &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']) &&
+        request.resource.data.stock >= 0;
     }
     
     // Allow users to read/write their own orders

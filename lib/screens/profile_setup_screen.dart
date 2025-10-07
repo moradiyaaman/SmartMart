@@ -398,9 +398,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         throw Exception('User not authenticated');
       }
 
-      print('Creating profile for user: ${user.email}');
-      print('Form data - Name: ${_firstNameController.text} ${_lastNameController.text}, Phone: ${_phoneController.text}, Gender: $_selectedGender, DOB: $_selectedDateOfBirth');
-
       final profile = UserProfile(
         userId: user.uid,
         email: user.email ?? '',
@@ -415,15 +412,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       );
 
       // Test Firebase connection first
-      print('Running Firebase connectivity test...');
       await FirebaseTest.testFirebaseConnection();
       
-      print('Calling UserProfileService.saveUserProfile...');
       final success = await UserProfileService.saveUserProfile(profile);
-      print('Save result: $success');
       
       if (success) {
-        print('Profile saved successfully, navigating to address form');
         // Navigate to address form
         if (mounted) {
           Navigator.push(

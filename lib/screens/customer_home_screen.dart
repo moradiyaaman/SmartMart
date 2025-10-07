@@ -1,48 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import '../models/app_models.dart';
-import '../services/auth_service.dart';
+import '../constants/approved_categories.dart';
 import 'product_catalog_screen.dart';
 import 'product_detail_screen.dart';
 import 'cart_screen.dart';
 import 'customer_profile_screen.dart';
-import 'auth_screen.dart';
-import 'debug_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
-  const CustomerHomeScreen({super.key});
+  final int initialTab;
+  
+  const CustomerHomeScreen({super.key, this.initialTab = 0});
 
   @override
   State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
 }
 
 class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
-  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
-  int _selectedIndex = 0;
+  late int _selectedIndex;
   
-  final List<String> categories = [
-    'Electronics',
-    'Fashion',
-    'Home & Garden',
-    'Sports',
-    'Books',
-    'Health & Beauty',
-    'Automotive',
-    'Toys & Games'
-  ];
+  final List<String> categories = ApprovedCategories.categories;
 
   final List<IconData> categoryIcons = [
-    Icons.phone_android,
-    Icons.checkroom,
-    Icons.home,
-    Icons.sports_soccer,
-    Icons.book,
-    Icons.face,
-    Icons.directions_car,
-    Icons.toys
+    Icons.phone_android,    // Electronics
+    Icons.checkroom,        // Clothing
+    Icons.book,             // Books
+    Icons.home,             // Home & Garden
+    Icons.sports_soccer,    // Sports
+    Icons.face,             // Beauty & Health
+    Icons.toys,             // Toys
+    Icons.directions_car,   // Automotive
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialTab;
+  }
 
   @override
   void dispose() {
@@ -50,22 +47,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     super.dispose();
   }
 
-  Future<void> _signOut() async {
-    try {
-      await _authService.signOut();
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const AuthScreen()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error signing out: $e')),
-      );
-    }
-  }
+
 
   Widget _buildHomeContent() {
     return SingleChildScrollView(
@@ -139,12 +121,11 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
               onSubmitted: (query) {
                 if (query.isNotEmpty) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProductCatalogScreen(searchQuery: query),
-                    ),
-                  );
+                  setState(() {
+                    _selectedIndex = 1; // Switch to catalog tab
+                  });
+                  // Clear the search field after navigating
+                  _searchController.clear();
                 }
               },
             ),
@@ -164,12 +145,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ProductCatalogScreen(),
-                    ),
-                  );
+                  setState(() {
+                    _selectedIndex = 1; // Switch to catalog tab
+                  });
                 },
                 child: const Text('View All'),
               ),
@@ -188,14 +166,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                   padding: const EdgeInsets.only(right: 16),
                   child: GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ProductCatalogScreen(
-                            selectedCategory: categories[index],
-                          ),
-                        ),
-                      );
+                      setState(() {
+                        _selectedIndex = 1; // Switch to catalog tab
+                      });
                     },
                     child: Column(
                       children: [
@@ -246,12 +219,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ProductCatalogScreen(),
-                    ),
-                  );
+                  setState(() {
+                    _selectedIndex = 1; // Switch to catalog tab
+                  });
                 },
                 child: const Text('View All'),
               ),
@@ -294,16 +264,20 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 );
               }
               
-              final products = snapshot.data!.docs
+              final allProducts = snapshot.data!.docs
                   .map((doc) => Product.fromFirestore(doc))
                   .toList();
+              
+              // Filter to only show products with approved categories
+              final products = allProducts.where((product) =>
+                  ApprovedCategories.isApproved(product.category)).toList();
               
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  childAspectRatio: 0.75,
+                  childAspectRatio: 0.8,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
                 ),
@@ -331,7 +305,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           child: const Icon(Icons.image_not_supported, size: 40),
         ),
       );
-    } else {
+    } else if (imagePath.startsWith('http')) {
       // Network image
       return CachedNetworkImage(
         imageUrl: imagePath,
@@ -343,6 +317,16 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
           ),
         ),
         errorWidget: (context, url, error) => Container(
+          color: Colors.grey.shade200,
+          child: const Icon(Icons.image_not_supported, size: 40),
+        ),
+      );
+    } else {
+      // Local file path
+      return Image.file(
+        File(imagePath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
           color: Colors.grey.shade200,
           child: const Icon(Icons.image_not_supported, size: 40),
         ),
@@ -376,8 +360,8 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: product.images.isNotEmpty
-                      ? _buildProductImage(product.images.first)
+                  child: product.hasImages
+                      ? _buildProductImage(product.imageUrl)
                       : Container(
                           color: Colors.grey.shade200,
                           child: const Icon(Icons.image_not_supported, size: 40),
@@ -385,42 +369,52 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 ),
               ),
             ),
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.name,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+            Padding(
+              padding: const EdgeInsets.all(6.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    product.name,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
                     ),
-                    const Spacer(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          '₹${product.price.toStringAsFixed(2)}',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade600,
-                          ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    product.description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey.shade600,
+                      fontSize: 10,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '₹${product.price.toStringAsFixed(2)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade600,
+                          fontSize: 12,
                         ),
-                        if (product.stock > 0)
-                          Icon(
-                            Icons.shopping_cart_outlined,
-                            size: 16,
-                            color: Colors.grey.shade600,
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                      if (product.stock > 0)
+                        Icon(
+                          Icons.shopping_cart_outlined,
+                          size: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -437,46 +431,6 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         backgroundColor: Colors.blue.shade600,
         foregroundColor: Colors.white,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const DebugScreen()),
-              );
-            },
-            tooltip: 'Debug Firestore',
-          ),
-          IconButton(
-            icon: const Icon(Icons.shopping_cart),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const CartScreen()),
-              );
-            },
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'logout') {
-                _signOut();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout),
-                    SizedBox(width: 8),
-                    Text('Logout'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
       body: IndexedStack(
         index: _selectedIndex,
